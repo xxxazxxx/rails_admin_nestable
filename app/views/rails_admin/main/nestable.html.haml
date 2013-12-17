@@ -1,3 +1,49 @@
+:ruby
+  query = params[:query]
+
+  export_action = RailsAdmin::Config::Actions.find(:export, { :controller => self.controller, :abstract_model => @abstract_model })
+  export_action = nil unless export_action && authorized?(export_action.authorization_key, @abstract_model)
+
+  @filterable_fields = @model_config.list.fields.select(&:filterable?)
+  @ordered_filters = (params[:f] || @model_config.list.filters).inject({}) { |memo, filter|
+    field_name = filter.is_a?(Array) ? filter.first : filter
+  (filter.is_a?(Array) ? filter.last : { (@index += 1) => { "v" => '' } }) .each do |index, filter_hash|
+      unless filter_hash['disabled']
+        memo[index] = { field_name => filter_hash }
+      else
+        params[:f].delete(field_name)
+      end
+    end
+    memo
+  }.to_a.sort_by(&:first)
+
+= content_for :contextual_tabs do
+  - if @filterable_fields.present?
+    %li.dropdown{:style => 'float:right'}
+      %a.dropdown-toggle{:href => '#', :'data-toggle' => "dropdown"}
+        = t('admin.misc.add_filter')
+        %b.caret
+      %ul.dropdown-menu#filters{:style => 'left:auto; right:0;'}
+        - @filterable_fields.each do |field|
+          - field_options = case field.type
+          - when :enum
+            - options_for_select(field.with(:object => @abstract_model.model.new).enum)
+          - else
+            - ''
+          %li
+            %a{:href => '#', :"data-field-label" => field.label, :"data-field-name" => field.name, :"data-field-options" => field_options.html_safe, :"data-field-type" => field.type, :"data-field-value" => ""}= field.label
+
+= form_tag(nestable_path(params.except(*%w[page f query])), :method => :get, :class => "pjax-form form-inline") do
+  .well
+    %span#filters_box
+    %hr.filters_box{:style => "display:#{@ordered_filters.empty? ? 'none' : 'block'}"}
+    %input.input-small{:name => "query", :type => "search", :value => query, :placeholder => t("admin.misc.filter")}
+    %button.btn.btn-primary{:type => "submit", :'data-disable-with' => "<i class='icon-white icon-refresh'></i> ".html_safe + t("admin.misc.refresh")}
+      %i.icon-white.icon-refresh
+      = t("admin.misc.refresh")
+    - if export_action
+      %span{:style => 'float:right'}= link_to wording_for(:link, export_action), export_path(params.except('set').except('page')), :class => 'btn btn-info'
+
 .row-fluid
   .span12#rails_admin_nestable
     .control-group
